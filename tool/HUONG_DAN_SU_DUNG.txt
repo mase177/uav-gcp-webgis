@@ -1,0 +1,9 @@
+CONG CU KHOP RANH XA PHUONG - BAN PORTABLE
+
+1. Khi chuyen sang may khac, sao chep NGUYEN thu muc GIS_Khop_Ranh.
+2. Khong doi ten, khong tach hay xoa cac tep trong thu muc.
+3. Nhap dup Chay_Cong_Cu.bat de mo cong cu.
+
+May dich khong can cai Python hay thu vien GIS.
+Neu Windows hien canh bao SmartScreen, chon More info (Them thong tin) > Run anyway (Van chay),
+chi khi ban nhan goi tu nguon tin cay.

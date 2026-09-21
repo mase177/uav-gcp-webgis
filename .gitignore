@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+data/exports/*
+!data/exports/.gitkeep
+
+# Large reference datasets are distributed separately, not through Git
+data/Ranh_Vietnam/*.kml
+
+# Python tooling and generated desktop application packages
+tool/.buildenv/
+tool/build/
+tool/dist/
+tool/release/
+tool/__pycache__/
+
+# Local development caches
+.pytest_cache/
+*.log

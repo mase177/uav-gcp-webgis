@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UAV GCP Optimizer</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <aside class="panel">
+      <header>
+        <p class="eyebrow">UAV GCP WebGIS</p>
+        <h1>GCP accessibility optimizer</h1>
+        <p class="muted">AOI + roads → candidates → GA → metrics → route</p>
+      </header>
+
+      <section>
+        <h2>1. Khu vực khảo sát</h2>
+        <p class="hint">Nạp tệp WGS84 hoặc chọn công cụ rồi nhấp lên bản đồ. Polygon AOI cần ít nhất 3 đỉnh.</p>
+        <div class="tool-row" role="group" aria-label="Công cụ bản đồ">
+          <button id="mode-aoi" class="tool active">Vẽ polygon AOI</button>
+          <button id="mode-road" class="tool">Vẽ mạng đường</button>
+          <button id="mode-gcp" class="tool">Ghim GCP trực tiếp</button>
+          <button id="mode-cp" class="tool">Ghim Check Point</button>
+        </div>
+        <p class="map-legend"><span class="legend-pin gcp"></span> GCP: ghim vàng &nbsp; <span class="legend-pin cp"></span> Check Point: ghim xanh</p>
+        <label class="layer-toggle"><input id="toggle-no-fly" type="checkbox" checked /> Hiển thị vùng cấm/hạn chế bay</label>
+        <button id="open-import" class="primary">Nhập vùng bay / dữ liệu khảo sát</button>
+        <div class="button-row">
+          <button id="finish-aoi" class="secondary">Hoàn tất AOI</button>
+          <button id="clear-aoi" class="ghost">Xóa AOI</button>
+        </div>
+        <div class="button-row gcp-actions">
+          <button id="remove-last-gcp" class="ghost">Xóa GCP cuối</button>
+          <button id="remove-last-cp" class="ghost">Xóa CP cuối</button>
+          <button id="clear-manual-gcps" class="ghost">Xóa GCP ghim tay</button>
+          <button id="clear-check-points" class="ghost">Xóa Check Point</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>2. Ranh giới bay & hồ sơ</h2>
+        <p class="hint">AOI là ranh giới bay dự kiến. Hệ thống tự khớp với dữ liệu xã/phường toàn quốc; lớp cấm/hạn chế bay dùng để sàng lọc trước khi lập hồ sơ.</p>
+        <button id="check-flight-boundary" class="secondary" disabled>KIỂM TRA RANH BAY</button>
+        <div id="flight-boundary-result" class="flight-boundary-result" hidden aria-live="polite"></div>
+        <div class="button-row flight-export-actions">
+          <button id="export-flight-kml" class="ghost" disabled>Xuất KML ranh bay</button>
+          <button id="export-flight-brief" class="ghost" disabled>Xuất phiếu thông tin</button>
+        </div>
+        <p class="permit-note">Kết quả là thông tin hỗ trợ chuẩn bị hồ sơ, không phải giấy phép bay hoặc xác nhận được phép bay. Luôn đối chiếu nguồn và thủ tục của cơ quan có thẩm quyền.</p>
+      </section>
+
+      <section>
+        <h2>3. Thiết lập tối ưu</h2>
+        <label>Loại định vị ảnh
+          <select id="positioning-method">
+            <option value="rtk">UAV RTK</option>
+            <option value="ppk">UAV PPK</option>
+            <option value="non_rtk" selected>Không RTK / PPK</option>
+          </select>
+        </label>
+        <label>Độ chính xác yêu cầu (cm) <input id="required-accuracy" type="number" min="1" max="20" step="0.5" value="5" /></label>
+        <label>Địa hình
+          <select id="terrain-complexity">
+            <option value="flat" selected>Bằng phẳng</option>
+            <option value="rolling">Đồi dốc nhẹ</option>
+            <option value="complex">Phức tạp / công trình cao</option>
+          </select>
+        </label>
+        <label>Độ cao bay (m) <input id="flight-altitude" type="number" min="20" max="500" value="100" /></label>
+        <label>GSD dự kiến (cm) <input id="gsd" type="number" min="0.5" max="20" step="0.1" value="3" /></label>
+        <label>Chồng phủ dọc (%) <input id="forward-overlap" type="number" min="60" max="95" value="80" /></label>
+        <label>Chồng phủ ngang (%) <input id="side-overlap" type="number" min="60" max="95" value="70" /></label>
+        <label>Số GCP <input id="gcp-count" type="number" min="3" max="40" value="8" /></label>
+        <label>Bước lưới Candidate (m) <input id="spacing" type="number" min="10" max="500" value="45" /></label>
+        <label>Ngưỡng tiếp cận đường (m) <input id="access-radius" type="number" min="5" max="1000" value="80" /></label>
+        <label>Số thế hệ GA <input id="generations" type="number" min="10" max="240" value="80" /></label>
+        <div id="profile-recommendation" class="profile-recommendation" aria-live="polite">Chọn cấu hình bay, sau đó nạp AOI và mạng đường để nhận khuyến nghị GCP/CP.</div>
+        <button id="apply-profile" class="secondary" disabled>Áp dụng khuyến nghị</button>
+        <button id="run-ga" class="primary">Chạy tối ưu GA</button>
+      </section>
+
+      <section>
+        <h2>4. Kết quả tối ưu GCP</h2>
+        <div id="status" class="status">Nạp tệp khảo sát hoặc vẽ AOI để bắt đầu.</div>
+        <dl id="metrics" class="metrics"></dl>
+        <button id="plan-route" class="secondary" disabled>Lập tuyến khảo sát</button>
+        <button id="export-result" class="ghost" disabled>Xuất GCP GeoJSON</button>
+      </section>
+
+      <footer>
+        Ranh bay và dữ liệu nhập trong phiên hiện tại được xử lý trên trình duyệt. Kết quả kiểm tra là lớp tham khảo, cần đối chiếu nguồn chính thức trước khi vận hành UAV.
+      </footer>
+    </aside>
+    <main id="map" aria-label="Bản đồ khu vực khảo sát UAV"></main>
+
+    <div id="import-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="import-title">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 id="import-title">Nhập vùng bay</h2>
+          <button id="close-import" class="modal-close" aria-label="Đóng">×</button>
+        </div>
+        <div class="modal-body">
+          <label for="shape-file" class="import-choice file-choice">GỬI SHAPEFILE (.ZIP)</label>
+          <input id="shape-file" class="visually-hidden" type="file" accept=".zip,application/zip,application/x-zip-compressed" />
+          <label for="geojson-file" class="import-choice file-choice">GỬI FILE GEOJSON</label>
+          <input id="geojson-file" class="visually-hidden" type="file" accept=".json,.geojson,application/geo+json,application/json" />
+          <label for="kml-file" class="import-choice file-choice">GỬI FILE KML/KMZ</label>
+          <input id="kml-file" class="visually-hidden" type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" />
+          <button id="show-coordinates" class="import-choice">NHẬP TỌA ĐỘ</button>
+          <button id="draw-aoi" class="import-choice draw-choice">VẼ VÙNG AOI</button>
+          <button id="draw-road" class="import-choice draw-choice">VẼ MẠNG ĐƯỜNG</button>
+          <form id="coordinate-form" class="coordinate-form" hidden>
+            <label>Loại hình học
+              <select id="coordinate-kind">
+                <option value="aoi">Vùng bay AOI (Polygon)</option>
+                <option value="road">Mạng đường (LineString)</option>
+              </select>
+            </label>
+            <label>Tọa độ WGS84 (kinh độ, vĩ độ; mỗi dòng một điểm)
+              <textarea id="coordinate-text" rows="6" placeholder="106.7800, 10.8700&#10;106.7820, 10.8700&#10;106.7820, 10.8720"></textarea>
+            </label>
+            <button class="secondary" type="submit">NẠP TỌA ĐỘ</button>
+          </form>
+          <p id="selected-file" class="selected-file" aria-live="polite"></p>
+          <p class="import-note">Shapefile cần được nén thành một tệp ZIP, gồm tối thiểu .shp, .shx và .dbf. Hệ tọa độ đầu vào: WGS84.</p>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
