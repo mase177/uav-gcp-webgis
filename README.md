@@ -56,9 +56,10 @@ Ba lớp chỉ tham chiếu từ SCM cũ đã được chép sang database mới
 1. Chọn **Nhập vùng bay / dữ liệu khảo sát** rồi nạp Shapefile ZIP, GeoJSON, KML/KMZ hoặc nhập tọa độ WGS84. Sau mỗi lần nạp, bản đồ tự zoom đến phạm vi dữ liệu. Polygon được nhận là AOI, LineString là mạng đường, điểm có tên `CP` hoặc `Check Point` được nhận là Check Point; các điểm còn lại là GCP.
 2. Chọn **Vẽ polygon AOI** để tạo khu vực khảo sát, hoặc **Ghim GCP trực tiếp** để lập phương án thủ công.
 3. Chọn loại định vị ảnh (**RTK**, **PPK** hoặc **không RTK/PPK**), độ chính xác yêu cầu, địa hình, độ cao bay, GSD và chồng phủ. Khi đã có AOI và mạng đường, WebGIS đưa ra khuyến nghị số GCP, số Check Point tối thiểu và bước lưới Candidate; người dùng có thể áp dụng hoặc tự điều chỉnh.
-4. Chạy GA để nhận cấu hình GCP, fitness và các baseline so sánh. Theo cấu hình định vị, GA tự điều chỉnh trọng số fitness: UAV không RTK ưu tiên coverage/uniformity hơn; RTK ưu tiên thêm khả năng tiếp cận, nhưng vẫn giữ ràng buộc phân bố không gian.
-5. Ghim **Check Point (CP)** bằng ghim xanh để kiểm tra độc lập độ chính xác. GCP hiển thị bằng ghim vàng. CP được xuất cùng GCP và có thể được tính vào tuyến khảo sát.
-6. Lập tuyến khảo sát rồi xuất các điểm khống chế thành GeoJSON. GCP ghim tay cũng dùng được hai chức năng này.
+4. Sau khi có AOI, bấm **Chạy tối ưu GA**. WebGIS tự nạp nền mạng đường OpenStreetMap để đánh giá tiếp cận và lập chỉ đường; mạng đường không cần hiển thị hoặc tải thủ công. Với AOI rộng, hệ thống tự chia thành các ô truy vấn nhỏ rồi gộp dữ liệu đường; có thể thay bằng KML/GeoJSON đường do người dùng cung cấp khi không có Internet.
+5. Chạy GA để nhận cấu hình GCP, fitness và các baseline so sánh. Mọi điểm thuộc AOI đều là ứng viên; khoảng cách đến đường là điểm ưu tiên liên tục, không phải điều kiện loại bỏ điểm. Theo cấu hình định vị, GA tự điều chỉnh trọng số fitness: UAV không RTK ưu tiên coverage/uniformity hơn; RTK ưu tiên thêm khả năng tiếp cận, nhưng vẫn giữ ràng buộc phân bố không gian. Khi GA hoàn tất, WebGIS tự tối ưu thứ tự khảo sát từ GCP 1, hiển thị thứ tự ghé các điểm và tuyến trên đường. Có thể chọn ô tô hoặc xe máy; thời gian xe máy là ước tính tham khảo và cần kiểm tra đường cấm xe máy.
+6. Ghim **Check Point (CP)** bằng ghim xanh để kiểm tra độc lập độ chính xác. GCP hiển thị bằng ghim vàng. CP được xuất cùng GCP và có thể được tính vào tuyến khảo sát.
+7. Có thể bấm **Lập tuyến khảo sát theo OSM** để tính lại tuyến sau khi thêm/bớt GCP hoặc CP. Nếu OSRM không phản hồi, hệ thống hiển thị rõ đây là tuyến khoảng cách thẳng ước lượng, không phải tuyến thực tế.
 
 Khi chạy qua FastAPI, WebGIS tự nạp `data/cambay/CAMBAY.kmz`: vùng **cấm bay** màu đỏ và vùng **hạn chế bay** màu vàng. Đây là lớp cảnh báo điều kiện vận hành UAV; không được dùng để tự loại các GCP mặt đất khỏi thuật toán GA.
 
@@ -79,7 +80,7 @@ Các tệp xuất ra chỉ hỗ trợ chuẩn bị thông tin kỹ thuật. Chú
 - **coverage**: tỷ lệ mẫu trong AOI có GCP gần trong bán kính phủ.
 - **uniformity**: độ ổn định của khoảng cách đến GCP lân cận.
 - **edge_interior**: cân bằng GCP vùng biên và vùng trong.
-- **accessibility**: khoảng cách của GCP đến mạng đường đủ điều kiện.
+- **accessibility**: mức độ thuận lợi để đi từ đường đến GCP, tính giảm dần theo khoảng cách đến mạng đường OSM hoặc mạng đường do người dùng nạp. Chỉ số này ưu tiên điểm dễ tiếp cận nhưng không loại bỏ điểm cần thiết cho độ phủ không gian. Thời gian tiếp cận đầy đủ theo road graph là bước nâng cấp tiếp theo.
 
 Các baseline gồm trung bình random, bố trí lan tỏa không gian và bản spatial-only. Đây là dữ liệu cần so sánh kỹ trong báo cáo môn AI.
 

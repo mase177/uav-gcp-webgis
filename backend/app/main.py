@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api.routes import areas, flight_boundaries, gcps, no_fly_zones, optimization, routing
+from .api.routes import areas, flight_boundaries, gcps, no_fly_zones, optimization, osm, routing
 from .core.config import FRONTEND_DIR
 from .core.database import database_status
 
@@ -17,6 +17,7 @@ app.include_router(flight_boundaries.router, prefix="/api")
 app.include_router(gcps.router, prefix="/api")
 app.include_router(no_fly_zones.router, prefix="/api")
 app.include_router(optimization.router, prefix="/api")
+app.include_router(osm.router, prefix="/api")
 app.include_router(routing.router, prefix="/api")
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 

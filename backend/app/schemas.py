@@ -30,6 +30,17 @@ class CandidateRequest(SpatialInput):
     pass
 
 
+class OSMRoadRequest(BaseModel):
+    aoi: dict[str, Any]
+
+    @field_validator("aoi")
+    @classmethod
+    def aoi_is_geojson(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if value.get("type") not in {"Feature", "Polygon", "MultiPolygon"}:
+            raise ValueError("AOI must be a GeoJSON Polygon or Feature")
+        return value
+
+
 class OptimizationWeights(BaseModel):
     coverage: float = Field(default=0.35, ge=0, le=1)
     uniformity: float = Field(default=0.25, ge=0, le=1)
@@ -55,9 +66,10 @@ class OptimizationRequest(SpatialInput):
 
 
 class RouteRequest(BaseModel):
-    gcps: list[dict[str, Any]] = Field(min_length=2, max_length=40)
+    gcps: list[dict[str, Any]] = Field(min_length=2, max_length=25)
     start: list[float] | None = None
     return_to_start: bool = True
+    vehicle: Literal["car", "motorcycle"] = "car"
 
     @field_validator("start")
     @classmethod

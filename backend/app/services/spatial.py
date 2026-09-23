@@ -7,11 +7,12 @@ small UAV survey areas and can later be replaced with projected PostGIS operatio
 
 from __future__ import annotations
 
-from math import cos, hypot, pi
+from math import ceil, cos, hypot, pi
 from statistics import mean, pstdev
 from typing import Any, Iterable
 
 Coordinate = tuple[float, float]  # (longitude, latitude)
+MAX_ACCESS_SEGMENTS = 6_000
 
 
 def _geometry(geojson: dict[str, Any]) -> dict[str, Any]:
@@ -69,6 +70,12 @@ def distance_m(a: Coordinate, b: Coordinate) -> float:
 
 
 def distance_to_segment_m(point: Coordinate, start: Coordinate, end: Coordinate) -> float:
+    nearest = nearest_point_on_segment(point, start, end)
+    return distance_m(point, nearest)
+
+
+def nearest_point_on_segment(point: Coordinate, start: Coordinate, end: Coordinate) -> Coordinate:
+    """Return the closest coordinate on a road segment in the local metric plane."""
     lon_factor, lat_factor = meters_per_degree(point[1])
     px, py = point[0] * lon_factor, point[1] * lat_factor
     ax, ay = start[0] * lon_factor, start[1] * lat_factor
@@ -76,9 +83,9 @@ def distance_to_segment_m(point: Coordinate, start: Coordinate, end: Coordinate)
     dx, dy = bx - ax, by - ay
     denominator = dx * dx + dy * dy
     if denominator == 0:
-        return hypot(px - ax, py - ay)
+        return start
     ratio = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / denominator))
-    return hypot(px - (ax + ratio * dx), py - (ay + ratio * dy))
+    return ((ax + ratio * dx) / lon_factor, (ay + ratio * dy) / lat_factor)
 
 
 def point_in_polygon(point: Coordinate, ring: list[Coordinate]) -> bool:
@@ -101,6 +108,12 @@ def generate_candidates(
 ) -> tuple[list[dict[str, Any]], list[Coordinate]]:
     ring = polygon_ring(aoi)
     segments = road_segments(roads)
+    # A large AOI can contain tens of thousands of OSM segments.  A uniform
+    # deterministic sample keeps GA interactive while preserving road coverage
+    # for the accessibility preference.
+    if len(segments) > MAX_ACCESS_SEGMENTS:
+        step = ceil(len(segments) / MAX_ACCESS_SEGMENTS)
+        segments = segments[::step][:MAX_ACCESS_SEGMENTS]
     min_lon, min_lat, max_lon, max_lat = bounding_box(ring)
     lon_factor, lat_factor = meters_per_degree((min_lat + max_lat) / 2)
     lon_step = spacing_m / lon_factor
@@ -113,20 +126,31 @@ def generate_candidates(
         while longitude <= max_lon and len(candidates) < max_candidates:
             coordinate = (longitude, latitude)
             if point_in_polygon(coordinate, ring):
-                access_distance = min(distance_to_segment_m(coordinate, start, end) for start, end in segments)
-                if access_distance <= access_radius_m:
-                    candidates.append(
-                        {
-                            "id": f"candidate-{len(candidates) + 1}",
-                            "coordinate": [round(longitude, 7), round(latitude, 7)],
-                            "access_distance_m": round(access_distance, 1),
-                        }
-                    )
+                # A GCP may be placed anywhere in the survey area.  The road
+                # network is a preference for field access, not a hard spatial
+                # exclusion: otherwise a sparse or imperfect OSM extract could
+                # leave the optimisation with no candidates at all.
+                access_point = min(
+                    (nearest_point_on_segment(coordinate, start, end) for start, end in segments),
+                    key=lambda point: distance_m(coordinate, point),
+                )
+                access_distance = distance_m(coordinate, access_point)
+                accessibility_score = 1 / (1 + access_distance / max(access_radius_m, 1))
+                candidates.append(
+                    {
+                        "id": f"candidate-{len(candidates) + 1}",
+                        "coordinate": [round(longitude, 7), round(latitude, 7)],
+                        "access_distance_m": round(access_distance, 1),
+                        "access_point": [round(access_point[0], 7), round(access_point[1], 7)],
+                        "accessibility_score": round(accessibility_score, 4),
+                        "within_access_radius": access_distance <= access_radius_m,
+                    }
+                )
             longitude += lon_step
         latitude += lat_step
 
     if not candidates:
-        raise ValueError("No candidate GCPs were found. Increase access radius or check AOI and roads.")
+        raise ValueError("Không sinh được điểm ứng viên trong AOI. Hãy kiểm tra ranh AOI hoặc giảm bước lưới candidate.")
     return candidates, ring
 
 
@@ -137,7 +161,13 @@ def geojson_points(candidates: list[dict[str, Any]], kind: str = "candidate") ->
             {
                 "type": "Feature",
                 "id": candidate["id"],
-                "properties": {"kind": kind, "access_distance_m": candidate.get("access_distance_m")},
+                "properties": {
+                    "kind": kind,
+                    "access_distance_m": candidate.get("access_distance_m"),
+                    "access_point": candidate.get("access_point"),
+                    "accessibility_score": candidate.get("accessibility_score"),
+                    "within_access_radius": candidate.get("within_access_radius"),
+                },
                 "geometry": {"type": "Point", "coordinates": candidate["coordinate"]},
             }
             for candidate in candidates
@@ -175,7 +205,12 @@ def score_selection(
     edge_share = sum(distance <= max(spacing_m * 1.4, 65) for distance in boundary_distances) / len(points)
     edge_interior = max(0.0, 1 - abs(edge_share - 0.35) / 0.35)
 
-    accessibility = mean(max(0.0, 1 - item["access_distance_m"] / access_radius_m) for item in selected)
+    # A continuous score rewards shorter field access while still allowing
+    # boundary/interior points that are important for geometric coverage.
+    accessibility = mean(
+        item.get("accessibility_score", 1 / (1 + item["access_distance_m"] / max(access_radius_m, 1)))
+        for item in selected
+    )
     components = {
         "coverage": coverage,
         "uniformity": uniformity,
@@ -185,4 +220,3 @@ def score_selection(
     total_weight = sum(weights.values()) or 1
     components["fitness"] = sum(components[key] * weights.get(key, 0) for key in components if key != "fitness") / total_weight
     return {key: round(value, 4) for key, value in components.items()}
-

@@ -31,7 +31,7 @@ def run_optimization(request: OptimizationRequest):
             MAX_CANDIDATES,
         )
         if request.gcp_count > len(candidates):
-            raise ValueError(f"Only {len(candidates)} accessible candidates are available")
+            raise ValueError(f"Chỉ có {len(candidates)} điểm ứng viên trong AOI. Hãy giảm bước lưới candidate hoặc giảm số GCP yêu cầu.")
         selected, score = genetic_optimize(candidates, ring, request)
         baselines = build_baselines(candidates, ring, request)
     except ValueError as error:

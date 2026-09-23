@@ -27,6 +27,7 @@
         <p class="map-legend"><span class="legend-pin gcp"></span> GCP: ghim vàng &nbsp; <span class="legend-pin cp"></span> Check Point: ghim xanh</p>
         <label class="layer-toggle"><input id="toggle-no-fly" type="checkbox" checked /> Hiển thị vùng cấm/hạn chế bay</label>
         <button id="open-import" class="primary">Nhập vùng bay / dữ liệu khảo sát</button>
+        <p class="osm-note">Mạng đường được tự nạp nền khi chạy tối ưu; không cần hiển thị hoặc tự tải tuyến đường. AOI lớn được tự chia ô để tải OSM; cần có Internet.</p>
         <div class="button-row">
           <button id="finish-aoi" class="secondary">Hoàn tất AOI</button>
           <button id="clear-aoi" class="ghost">Xóa AOI</button>
@@ -74,10 +75,17 @@
         <label>Chồng phủ ngang (%) <input id="side-overlap" type="number" min="60" max="95" value="70" /></label>
         <label>Số GCP <input id="gcp-count" type="number" min="3" max="40" value="8" /></label>
         <label>Bước lưới Candidate (m) <input id="spacing" type="number" min="10" max="500" value="45" /></label>
-        <label>Ngưỡng tiếp cận đường (m) <input id="access-radius" type="number" min="5" max="1000" value="80" /></label>
+        <label>Cự ly tiếp cận ưu tiên từ đường (m) <input id="access-radius" type="number" min="5" max="1000" value="80" /></label>
+        <label>Phương tiện khảo sát
+          <select id="vehicle">
+            <option value="car" selected>Ô tô</option>
+            <option value="motorcycle">Xe máy</option>
+          </select>
+        </label>
         <label>Số thế hệ GA <input id="generations" type="number" min="10" max="240" value="80" /></label>
-        <div id="profile-recommendation" class="profile-recommendation" aria-live="polite">Chọn cấu hình bay, sau đó nạp AOI và mạng đường để nhận khuyến nghị GCP/CP.</div>
+        <div id="profile-recommendation" class="profile-recommendation" aria-live="polite">Chọn cấu hình bay và hoàn tất AOI; mạng đường sẽ tự nạp khi chạy tối ưu.</div>
         <button id="apply-profile" class="secondary" disabled>Áp dụng khuyến nghị</button>
+        <p class="osm-note">Mọi điểm trong AOI đều là ứng viên GCP; cự ly tiếp cận chỉ là tiêu chí ưu tiên để giảm công sức đi thực địa.</p>
         <button id="run-ga" class="primary">Chạy tối ưu GA</button>
       </section>
 
@@ -85,7 +93,8 @@
         <h2>4. Kết quả tối ưu GCP</h2>
         <div id="status" class="status">Nạp tệp khảo sát hoặc vẽ AOI để bắt đầu.</div>
         <dl id="metrics" class="metrics"></dl>
-        <button id="plan-route" class="secondary" disabled>Lập tuyến khảo sát</button>
+        <button id="plan-route" class="secondary" disabled>Tối ưu và chỉ đường GCP</button>
+        <div id="route-guidance" class="route-guidance" hidden></div>
         <button id="export-result" class="ghost" disabled>Xuất GCP GeoJSON</button>
       </section>
 
@@ -130,6 +139,6 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=20260923-6"></script>
   </body>
 </html>

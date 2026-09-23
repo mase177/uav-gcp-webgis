@@ -17,6 +17,7 @@ section { padding: 18px 0; border-bottom: 1px solid var(--line); }
 .legend-pin.cp { background: #1677d2; }
 .layer-toggle { display: flex; grid-template-columns: none; align-items: center; gap: 7px; margin: 0 0 10px; color: #8b1e1e; font-size: 12px; }
 .layer-toggle input { width: auto; margin: 0; }
+.osm-note { margin: 7px 0 0; color: #667085; font-size: 10.5px; line-height: 1.4; }
 label { display: grid; grid-template-columns: 1fr 92px; align-items: center; gap: 10px; margin: 8px 0; font-weight: 600; }
 input, select { width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--paper); font: inherit; }
 button { width: 100%; margin-top: 8px; padding: 10px 12px; border: 1px solid transparent; border-radius: 7px; cursor: pointer; font-weight: 750; }
@@ -98,6 +99,10 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 .map-legend-box .map-swatch { flex: 0 0 auto; }
 .status { padding: 10px; border-radius: 7px; color: #344054; background: #eef3f8; font-size: 12px; }
 .status.error { color: #9f1c1c; background: #ffefef; }
+.route-guidance { margin-top: 9px; padding: 10px; border: 1px solid #f0c8ae; border-radius: 7px; background: #fff8f3; color: #6a3518; font-size: 12px; }
+.route-guidance ol { margin: 7px 0 6px; padding-left: 22px; }
+.route-guidance li { margin: 3px 0; }
+.route-guidance small { color: #805436; }
 .profile-recommendation { margin: 12px 0 0; padding: 10px; border: 1px solid #bcd9d7; border-radius: 7px; color: #255d59; background: #effaf8; font-size: 11px; line-height: 1.45; }
 .profile-recommendation strong { display: block; margin-bottom: 3px; color: #0b645d; }
 .metrics { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; margin: 14px 0 4px; font-size: 12px; }

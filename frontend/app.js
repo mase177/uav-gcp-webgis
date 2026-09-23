@@ -1,8 +1,8 @@
 const map = L.map("map", { zoomControl: false }).setView([16.1, 107.8], 6);
 L.control.zoom({ position: "bottomright" }).addTo(map);
-const baseMap = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+const baseMap = L.tileLayer("https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", {
   maxZoom: 20,
-  attribution: "&copy; OpenStreetMap contributors",
+  attribution: "&copy; Google",
 }).addTo(map);
 
 function controlPinIcon(type, label) {
@@ -35,7 +35,13 @@ const layers = {
     },
   }).addTo(map),
   candidates: L.geoJSON(null, { pointToLayer: (_, latlng) => L.circleMarker(latlng, { radius: 3, color: "#8792a5", weight: 1, fillOpacity: 0.35 }) }).addTo(map),
-  selected: L.geoJSON(null, { pointToLayer: (feature, latlng) => L.marker(latlng, { icon: gcpPinIcon }).bindTooltip(feature.id, { direction: "top" }) }).addTo(map),
+  selected: L.geoJSON(null, {
+    pointToLayer: (feature, latlng) => {
+      const distance = feature.properties?.access_distance_m;
+      const label = distance == null ? feature.id : `${feature.id} · tiếp cận từ đường: ${Math.round(distance)} m`;
+      return L.marker(latlng, { icon: gcpPinIcon }).bindTooltip(label, { direction: "top" });
+    },
+  }).addTo(map),
   checkPoints: L.geoJSON(null, { pointToLayer: (feature, latlng) => L.marker(latlng, { icon: checkPointPinIcon }).bindTooltip(feature.id, { direction: "top" }) }).addTo(map),
   route: L.geoJSON(null, { style: { color: "#e16b20", weight: 4, dashArray: "7 6" } }).addTo(map),
 };
@@ -46,7 +52,7 @@ const metrics = document.querySelector("#metrics");
 const byId = (id) => document.querySelector(`#${id}`);
 
 const layerDefinitions = [
-  { id: "basemap", label: "Bản đồ nền OpenStreetMap", layer: baseMap, swatch: "base" },
+  { id: "basemap", label: "Bản đồ nền vệ tinh và đường", layer: baseMap, swatch: "base" },
   { id: "aoi", label: "Vùng khảo sát (AOI)", layer: layers.aoi, swatch: "aoi" },
   { id: "adminBoundaries", label: "Ranh hành chính nạp vào", layer: layers.adminBoundaries, swatch: "admin" },
   { id: "roads", label: "Mạng đường / tiếp cận", layer: layers.roads, swatch: "roads" },
@@ -119,6 +125,34 @@ function setStatus(message, error = false) {
   status.textContent = message;
   status.classList.toggle("error", error);
 }
+
+// Tile servers are external services.  Keep the map usable for the local
+// survey layers, but make a blocked network/firewall visible to the user
+// instead of silently leaving an empty map background.
+let baseMapErrorReported = false;
+function reportBaseMapUnavailable() {
+  if (baseMapErrorReported) return;
+  baseMapErrorReported = true;
+  const count = byId("layer-count-basemap");
+  if (count) count.textContent = "không tải được";
+  setStatus("Không thể tải bản đồ nền trực tuyến. Kiểm tra kết nối Internet, VPN hoặc tường lửa; các lớp AOI, GCP và dữ liệu đã nạp vẫn dùng được.", true);
+}
+
+baseMap.on("tileerror", reportBaseMapUnavailable);
+
+// Some browser/network policies finish failed image requests without emitting a
+// Leaflet tileerror event. Detect that case once after the initial map load.
+window.setTimeout(() => {
+  const tiles = [...document.querySelectorAll(".leaflet-tile")];
+  if (tiles.length && tiles.every((tile) => tile.complete && tile.naturalWidth === 0)) reportBaseMapUnavailable();
+}, 6000);
+
+baseMap.on("load", () => {
+  if (baseMapErrorReported) return;
+  baseMapErrorReported = false;
+  const count = byId("layer-count-basemap");
+  if (count) count.textContent = "nền";
+});
 
 async function loadNoFlyZones() {
   try {
@@ -347,6 +381,8 @@ function exportFlightBrief() {
 function resetResults() {
   layers.candidates.clearLayers(); layers.selected.clearLayers(); layers.checkPoints.clearLayers(); layers.route.clearLayers();
   state.selectedGcps = null; state.manualGcps = []; state.checkPoints = []; metrics.innerHTML = "";
+  byId("route-guidance").hidden = true;
+  byId("route-guidance").innerHTML = "";
   updateControlActions();
   refreshLayerPanel();
 }
@@ -486,6 +522,35 @@ function finishRoad() {
   layers.roads.clearLayers().addData(state.roads);
   renderAOI(); resetResults(); refreshSurveyRecommendation(); setMode("aoi");
   setStatus("Đã thêm một tuyến đường vào mạng đường khảo sát.");
+}
+
+async function loadOsmRoads({ automatic = false } = {}) {
+  if (!state.aoi) {
+    setStatus("Hãy hoàn tất AOI trước khi chạy tối ưu.", true);
+    return false;
+  }
+  if (window.location.protocol === "file:") {
+    setStatus("Hãy chạy WebGIS qua FastAPI để tự nạp dữ liệu đường và tối ưu GCP.", true);
+    return false;
+  }
+  setStatus(automatic ? "Đang tự nạp mạng đường để đánh giá tiếp cận và chỉ đường..." : "Đang tải mạng đường OpenStreetMap trong AOI...");
+  try {
+    const response = await fetch("/api/osm/roads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ aoi: state.aoi }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || "Không thể tải mạng đường OSM.");
+    state.roads = result.roads;
+    layers.roads.clearLayers().addData(state.roads);
+    if (automatic) layers.roads.remove();
+    else layers.roads.addTo(map);
+    resetResults();
+    refreshSurveyRecommendation();
+    refreshLayerPanel();
+    if (!automatic) setStatus(`Đã nạp ${result.way_count} đoạn đường OSM trong ${result.query_area_km2.toFixed(2)} km².`);
+    return true;
+  } catch (error) {
+    setStatus(error.message || "Không thể tải mạng đường OSM.", true);
+    return false;
+  }
 }
 
 function clearAOI() {
@@ -690,7 +755,7 @@ function payload() {
 function clearSurveyRecommendation() {
   state.surveyProfile = null;
   byId("apply-profile").disabled = true;
-  byId("profile-recommendation").textContent = "Chọn cấu hình bay, sau đó nạp AOI và mạng đường để nhận khuyến nghị GCP/CP.";
+  byId("profile-recommendation").textContent = "Chọn cấu hình bay và hoàn tất AOI; mạng đường sẽ tự nạp khi chạy tối ưu.";
 }
 
 function renderSurveyRecommendation(profile) {
@@ -731,7 +796,11 @@ function displayMetrics(result) {
 }
 
 async function runOptimization() {
-  if (!state.aoi || !state.roads) return setStatus("Cần có cả vùng AOI và mạng đường trước khi chạy GA.", true);
+  if (!state.aoi) return setStatus("Hãy hoàn tất AOI trước khi chạy tối ưu GA.", true);
+  if (!state.roads) {
+    const loaded = await loadOsmRoads({ automatic: true });
+    if (!loaded) return;
+  }
   setStatus("Đang sinh candidate GCP và chạy Genetic Algorithm...");
   try {
     const response = await fetch("/api/optimization/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload()) });
@@ -744,22 +813,41 @@ async function runOptimization() {
     state.selectedGcps = result.selected_gcps; state.manualGcps = []; displayMetrics(result); renderCheckPoints();
     renderSurveyRecommendation(result.survey_profile);
     refreshLayerPanel();
-    setStatus(`Hoàn tất: chọn ${result.gcp_count}/${result.candidate_count} candidate. Fitness GA: ${(result.metrics.fitness * 100).toFixed(1)}%. Khuyến nghị kiểm chứng bằng tối thiểu ${result.survey_profile.recommended_cp_count} CP.`);
+    const route = await planRoute({ automatic: true });
+    const routeText = route
+      ? `${route.properties.is_estimate ? "Tuyến ước lượng" : "Tuyến OSM"}: ${(route.properties.distance_m / 1000).toFixed(2)} km.`
+      : "Chưa tạo được tuyến khảo sát.";
+    setStatus(`Hoàn tất: chọn ${result.gcp_count}/${result.candidate_count} candidate. Fitness GA: ${(result.metrics.fitness * 100).toFixed(1)}%. ${routeText} Khuyến nghị kiểm chứng bằng tối thiểu ${result.survey_profile.recommended_cp_count} CP.`, Boolean(route?.properties?.is_estimate));
   } catch (error) { setStatus(error.message, true); }
 }
 
-async function planRoute() {
+async function planRoute({ automatic = false } = {}) {
   const controls = surveyControlCollection();
   if (controls.features.length < 2) return;
-  setStatus("Đang tối ưu thứ tự khảo sát GCP...");
+  setStatus(automatic ? "Đang tối ưu tuyến khảo sát theo mạng đường OSM..." : "Đang tối ưu thứ tự khảo sát theo mạng đường OSM...");
   try {
-    const response = await fetch("/api/routing/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gcps: controls.features }) });
+    const response = await fetch("/api/routing/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gcps: controls.features, vehicle: byId("vehicle").value }) });
     const route = await response.json();
     if (!response.ok) throw new Error(route.detail || "Không thể lập tuyến");
     layers.route.clearLayers().addData(route);
     refreshLayerPanel();
-    setStatus(`Tuyến khảo sát đã tạo: ${(route.properties.distance_m / 1000).toFixed(2)} km, ${route.properties.stops} điểm.`);
+    const distance = (route.properties.distance_m / 1000).toFixed(2);
+    const vehicleLabel = route.properties.vehicle === "motorcycle" ? "xe máy" : "ô tô";
+    const duration = route.properties.duration_s == null ? "" : `, ${(route.properties.duration_s / 60).toFixed(0)} phút ${vehicleLabel} ước tính`;
+    const source = route.properties.is_estimate ? "Tuyến ước lượng (OSM/OSRM chưa sẵn sàng)" : "Tuyến đường OSM";
+    displayRouteGuidance(route, vehicleLabel);
+    setStatus(`${source}: ${distance} km, ${route.properties.stops} điểm${duration}. ${route.properties.note || ""}`, Boolean(route.properties.is_estimate));
+    return route;
   } catch (error) { setStatus(error.message, true); }
+}
+
+function displayRouteGuidance(route, vehicleLabel) {
+  const guidance = byId("route-guidance");
+  const order = route.properties.survey_order || [];
+  const visits = order.length > 1 && order[0] === order[order.length - 1] ? order.slice(0, -1) : order;
+  const items = visits.map((item, index) => `<li><strong>Điểm ${index + 1}:</strong> ${escapeHtml(item)}</li>`).join("");
+  guidance.innerHTML = `<strong>Thứ tự khảo sát tối ưu · ${vehicleLabel}</strong><ol>${items || "<li>Xem tuyến màu cam trên bản đồ.</li>"}</ol><small>Bắt đầu từ GCP 1; tuyến được tính qua điểm tiếp cận gần đường của từng GCP.</small>`;
+  guidance.hidden = false;
 }
 
 function exportResults() {
